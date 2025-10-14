@@ -1,0 +1,228 @@
+BEGIN FOR t IN (
+  SELECT table_name FROM user_tables
+  WHERE table_name IN ('JOB_HISTORY','EMPLOYEES','DEPARTMENTS','LOCATIONS',
+                       'COUNTRIES','REGIONS','JOBS','JOB_GRADES')
+) LOOP
+  EXECUTE IMMEDIATE 'DROP TABLE '||t.table_name||' CASCADE CONSTRAINTS PURGE';
+END LOOP; END;
+/
+
+DROP TABLE TEST;
+
+
+CREATE TABLE regions AS SELECT * FROM hr.regions;
+CREATE TABLE countries AS SELECT * FROM hr.countries;
+CREATE TABLE locations AS SELECT * FROM hr.locations;
+CREATE TABLE departments AS SELECT * FROM hr.departments;
+CREATE TABLE jobs AS SELECT * FROM hr.jobs;
+CREATE TABLE employees AS SELECT * FROM hr.employees;
+CREATE TABLE job_history AS SELECT * FROM hr.job_history;
+CREATE TABLE job_grades AS SELECT * FROM hr.job_grades;
+CREATE TABLE sales AS SELECT * FROM hr.sales;
+CREATE TABLE products AS SELECT * FROM hr.products;
+
+
+ALTER TABLE REGIONS ADD CONSTRAINT REGIONS_PK PRIMARY KEY (REGION_ID);
+ALTER TABLE COUNTRIES ADD CONSTRAINT COUNTRIES_PK PRIMARY KEY (COUNTRY_ID);
+ALTER TABLE LOCATIONS ADD CONSTRAINT LOCATIONS_PK PRIMARY KEY (LOCATION_ID);
+ALTER TABLE DEPARTMENTS ADD CONSTRAINT DEPARTMENTS_PK PRIMARY KEY (DEPARTMENT_ID);
+ALTER TABLE JOBS ADD CONSTRAINT JOBS_PK PRIMARY KEY (JOB_ID);
+ALTER TABLE EMPLOYEES ADD CONSTRAINT EMPLOYEES_PK PRIMARY KEY (EMPLOYEE_ID);
+ALTER TABLE JOB_HISTORY ADD CONSTRAINT JOB_HISTORY_PK PRIMARY KEY (EMPLOYEE_ID, START_DATE);
+ALTER TABLE JOB_GRADES ADD CONSTRAINT JOB_GRADES_PK PRIMARY KEY (GRADE);
+ALTER TABLE PRODUCTS ADD CONSTRAINT PRODUCTS_PK PRIMARY KEY (PRODUCT_ID);
+ALTER TABLE SALES ADD CONSTRAINT SALES_PK PRIMARY KEY (SALE_ID);
+
+ALTER TABLE COUNTRIES
+  ADD CONSTRAINT COUNTRIES_REGION_FK FOREIGN KEY (REGION_ID)
+  REFERENCES REGIONS(REGION_ID);
+
+ALTER TABLE LOCATIONS
+  ADD CONSTRAINT LOCATIONS_COUNTRY_FK FOREIGN KEY (COUNTRY_ID)
+  REFERENCES COUNTRIES(COUNTRY_ID);
+
+ALTER TABLE DEPARTMENTS
+  ADD CONSTRAINT DEPARTMENTS_LOCATION_FK FOREIGN KEY (LOCATION_ID)
+  REFERENCES LOCATIONS(LOCATION_ID);
+
+ALTER TABLE EMPLOYEES
+  ADD CONSTRAINT EMPLOYEES_DEPT_FK FOREIGN KEY (DEPARTMENT_ID)
+  REFERENCES DEPARTMENTS(DEPARTMENT_ID);
+
+ALTER TABLE EMPLOYEES
+  ADD CONSTRAINT EMPLOYEES_JOB_FK FOREIGN KEY (JOB_ID)
+  REFERENCES JOBS(JOB_ID);
+
+ALTER TABLE EMPLOYEES
+  ADD CONSTRAINT EMPLOYEES_MANAGER_FK FOREIGN KEY (MANAGER_ID)
+  REFERENCES EMPLOYEES(EMPLOYEE_ID);
+
+ALTER TABLE DEPARTMENTS
+  ADD CONSTRAINT DEPARTMENTS_MANAGER_FK FOREIGN KEY (MANAGER_ID)
+  REFERENCES EMPLOYEES(EMPLOYEE_ID);
+
+ALTER TABLE JOB_HISTORY
+  ADD CONSTRAINT JH_EMP_FK FOREIGN KEY (EMPLOYEE_ID)
+  REFERENCES EMPLOYEES(EMPLOYEE_ID);
+
+ALTER TABLE JOB_HISTORY
+  ADD CONSTRAINT JH_JOB_FK FOREIGN KEY (JOB_ID)
+  REFERENCES JOBS(JOB_ID);
+
+ALTER TABLE JOB_HISTORY
+  ADD CONSTRAINT JH_DEPT_FK FOREIGN KEY (DEPARTMENT_ID)
+  REFERENCES DEPARTMENTS(DEPARTMENT_ID);
+
+ALTER TABLE SALES
+  ADD CONSTRAINT SALES_EMPLOYEE_FK FOREIGN KEY (EMPLOYEE_ID)
+  REFERENCES EMPLOYEES(EMPLOYEE_ID);
+
+ALTER TABLE SALES
+  ADD CONSTRAINT SALES_PRODUCT_FK FOREIGN KEY (PRODUCT_ID)
+  REFERENCES PRODUCTS(PRODUCT_ID);
+
+
+--zad 1
+SELECT last_name AS nazwisko, salary AS wynagrodzenie
+FROM employees
+WHERE department_id IN (20, 50)
+AND salary BETWEEN 2000 AND 7000
+ORDER BY last_name;
+
+--zad2
+SELECT hire_date AS data_zatrudnienia, last_name AS nazwisko, &kolumna AS kolumna_uzytkownika
+FROM employees
+WHERE manager_id IS NOT NULL
+AND EXTRACT(YEAR FROM hire_date) = 2005
+ORDER BY kolumna_uzytkownika;
+
+--zad3
+SELECT (first_name || ' ' || last_name) AS imie_nazwisko, salary, phone_number
+FROM employees
+WHERE SUBSTR(last_name, 3, 1) = 'e'
+AND LOWER(first_name) LIKE LOWER('%&frag%')
+ORDER BY 1 DESC, 2 ASC;
+
+--zad4
+SELECT first_name, last_name, ROUND(MONTHS_BETWEEN(SYSDATE, hire_date)) AS miesiace,
+CASE
+WHEN MONTHS_BETWEEN(SYSDATE, hire_date) < 150 THEN ROUND(0.10 * salary, 2)
+WHEN MONTHS_BETWEEN(SYSDATE, hire_date) < 200 THEN ROUND(0.20 * salary, 2)
+ELSE ROUND(0.30 * salary, 2) 
+END AS wysokosc_dodatku
+FROM employees
+ORDER BY miesiace;
+
+--zad5
+SELECT d.department_id, d.department_name, SUM(e.salary) AS suma_zarobkow, ROUND(AVG(e.salary)) AS srednia_zarobkow
+FROM departments d
+JOIN employees e ON e.department_id = d.department_id
+GROUP BY d.department_id, d.department_name
+HAVING MIN(e.salary) > 5000;
+
+--zad6
+SELECT e.last_name, e.department_id, d.department_name, e.job_id
+FROM employees e
+JOIN departments d ON d.department_id = e.department_id
+JOIN locations l ON l.location_id   = d.location_id
+WHERE l.city = 'Toronto';
+
+--zad7
+SELECT j.first_name || ' ' || j.last_name AS jennifer, w.first_name || ' ' || w.last_name AS wspolpracownik
+FROM employees j
+JOIN employees w
+ON w.department_id = j.department_id
+AND w.employee_id <> j.employee_id
+WHERE j.first_name = 'Jennifer';
+
+--zad8
+SELECT d.department_id, d.department_name
+FROM departments d
+LEFT JOIN employees e ON e.department_id = d.department_id
+WHERE e.employee_id IS NULL;
+
+--zad9
+SELECT e.first_name, e.last_name, e.job_id, d.department_name, e.salary, g.grade AS grade
+FROM employees e
+LEFT JOIN departments d ON d.department_id = e.department_id
+LEFT JOIN job_grades g ON e.salary BETWEEN g.min_salary AND g.max_salary;
+
+--zad10
+SELECT first_name, last_name, salary
+FROM employees
+WHERE salary > (SELECT AVG(salary) FROM employees)
+ORDER BY salary DESC;
+
+--zad11
+SELECT DISTINCT e.employee_id, e.first_name, e.last_name
+FROM employees e
+WHERE EXISTS (
+  SELECT 1
+  FROM employees x
+  WHERE x.department_id = e.department_id AND LOWER(x.last_name) LIKE '%u%'
+);
+
+--zad12
+SELECT first_name, last_name, hire_date
+FROM employees
+WHERE MONTHS_BETWEEN(SYSDATE, hire_date) > (SELECT AVG(MONTHS_BETWEEN(SYSDATE, hire_date)) FROM employees);
+
+--zad13
+SELECT d.department_name, COUNT(e.employee_id) AS liczba_pracownikow, ROUND(AVG(e.salary), 2) AS srednie_wynagrodzenie
+FROM departments d
+LEFT JOIN employees e ON e.department_id = d.department_id
+GROUP BY d.department_name
+ORDER BY liczba_pracownikow DESC;
+
+--zad14
+SELECT e.first_name, e.last_name, e.salary
+FROM employees e
+WHERE e.salary < ANY (
+  SELECT x.salary
+  FROM employees x
+  JOIN departments d ON d.department_id = x.department_id
+  WHERE d.department_name = 'IT'
+);
+
+--zad15
+SELECT DISTINCT d.department_id, d.department_name
+FROM departments d
+JOIN employees e ON e.department_id = d.department_id
+WHERE e.salary > (SELECT AVG(salary) FROM employees);
+
+--zad16
+SELECT j.job_id, j.job_title, ROUND(AVG(e.salary), 2) AS sr_pensja
+FROM jobs j
+JOIN employees e ON e.job_id = j.job_id
+GROUP BY j.job_id, j.job_title
+ORDER BY sr_pensja DESC
+FETCH FIRST 5 ROWS ONLY;
+
+--zad17
+SELECT r.region_name, COUNT(DISTINCT c.country_id)  AS liczba_krajow, COUNT(DISTINCT e.employee_id) AS liczba_pracownikow
+FROM regions r
+LEFT JOIN countries c ON c.region_id = r.region_id
+LEFT JOIN locations l ON l.country_id = c.country_id
+LEFT JOIN departments d ON d.location_id = l.location_id
+LEFT JOIN employees e ON e.department_id = d.department_id
+GROUP BY r.region_name;
+
+--zad18
+SELECT e.first_name, e.last_name, e.salary, m.first_name AS mgr_first, m.last_name AS mgr_last, m.salary AS mgr_salary
+FROM employees e
+JOIN employees m ON m.employee_id = e.manager_id
+WHERE e.salary > m.salary;
+
+--zad19
+SELECT TO_CHAR(hire_date, 'MM') AS miesiac, TO_CHAR(hire_date, 'Mon', 'NLS_DATE_LANGUAGE=English') AS miesiac_nazwa, COUNT(*) AS ilu
+FROM employees
+GROUP BY TO_CHAR(hire_date, 'MM'), TO_CHAR(hire_date, 'Mon', 'NLS_DATE_LANGUAGE=English')
+ORDER BY miesiac;
+
+--zad20
+SELECT d.department_name, ROUND(AVG(e.salary), 2) AS sr_pensja
+FROM departments d
+JOIN employees e ON e.department_id = d.department_id
+GROUP BY d.department_name
+ORDER BY sr_pensja DESC
+FETCH FIRST 3 ROWS ONLY;
