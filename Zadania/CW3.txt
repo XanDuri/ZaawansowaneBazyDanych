@@ -1,0 +1,20 @@
+CREATE VIEW V_WYSOKIE_PENSJE AS
+SELECT * FROM employees
+WHERE SALARY > 6000
+
+CREATE OR REPLACE VIEW V_WYSOKIE_PENSJE AS
+SELECT * FROM employees
+WHERE SALARY > 12000
+
+DROP VIEW V_WYSOKIE_PENSJE
+
+CREATE VIEW Finance_Empoyees AS
+SELECT e.EMPLOYEE_ID, e.LAST_NAME, e.FIRST_NAME
+FROM EMPLOYEES e
+INNER JOIN departments d ON e.department_id = d.department_id
+WHERE d.department_name = 'Finance'
+
+CREATE VIEW EMPOYEES_SALARY AS
+SELECT employee_id, last_name, first_name, salary, job_id, email, hire_date
+FROM employees
+WHERE salary BETWEEN 5000 AND 12000
