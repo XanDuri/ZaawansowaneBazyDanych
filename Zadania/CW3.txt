@@ -1,20 +1,161 @@
-CREATE VIEW V_WYSOKIE_PENSJE AS
-SELECT * FROM employees
-WHERE SALARY > 6000
-
-CREATE OR REPLACE VIEW V_WYSOKIE_PENSJE AS
-SELECT * FROM employees
-WHERE SALARY > 12000
-
-DROP VIEW V_WYSOKIE_PENSJE
-
-CREATE VIEW Finance_Empoyees AS
-SELECT e.EMPLOYEE_ID, e.LAST_NAME, e.FIRST_NAME
-FROM EMPLOYEES e
-INNER JOIN departments d ON e.department_id = d.department_id
-WHERE d.department_name = 'Finance'
-
-CREATE VIEW EMPOYEES_SALARY AS
-SELECT employee_id, last_name, first_name, salary, job_id, email, hire_date
+--zad 1
+CREATE OR REPLACE VIEW v_wysokie_pensje AS
+SELECT *
 FROM employees
-WHERE salary BETWEEN 5000 AND 12000
+WHERE salary > 6000;
+
+--zad 2
+CREATE OR REPLACE VIEW v_wysokie_pensje AS
+SELECT *
+FROM employees
+WHERE salary > 12000;
+
+--zad 3
+DROP VIEW v_wysokie_pensje;
+
+--zad 4
+CREATE OR REPLACE VIEW v_finance_employees AS
+SELECT e.employee_id, e.last_name, e.first_name
+FROM   employees   e
+JOIN   departments d ON d.department_id = e.department_id
+WHERE  d.department_name = 'Finance';
+
+--zad 5
+CREATE OR REPLACE VIEW v_employees_salary AS
+SELECT employee_id, last_name, first_name, salary, job_id, email, hire_date
+FROM   employees
+WHERE  salary BETWEEN 5000 AND 12000;
+
+
+
+CREATE OR REPLACE VIEW v_employees_salary AS
+SELECT employee_id, last_name, first_name, salary, job_id, email, hire_date, department_id
+FROM employees
+WHERE salary BETWEEN 5000 AND 12000;
+
+
+
+--zad 6
+--a
+INSERT INTO v_employees_salary
+  (employee_id, last_name, first_name, salary, job_id, email, hire_date, department_id)
+VALUES
+  (9999, 'Test', 'Adam', 9000,
+   (SELECT job_id FROM jobs WHERE ROWNUM=1),
+   'adam.test@ex.com', DATE '2024-01-15',
+   (SELECT department_id FROM departments WHERE ROWNUM=1));
+--b
+UPDATE v_employees_salary
+SET    salary = 10000
+WHERE  employee_id = 9999;
+
+--c
+DELETE FROM v_employees_salary
+WHERE  employee_id = 9999;
+
+--zad 7
+CREATE OR REPLACE VIEW v_dept_stats_4p AS
+SELECT d.department_id, d.department_name, COUNT(e.employee_id) AS liczba_pracownikow, ROUND(AVG(e.salary), 2) AS srednia_pensja, MAX(e.salary) AS max_pensja
+FROM departments d
+JOIN employees e ON e.department_id = d.department_id
+GROUP BY d.department_id, d.department_name
+HAVING COUNT(e.employee_id) >= 4;
+
+
+---a
+INSERT INTO v_dept_stats_4p (department_id, department_name, liczba_pracownikow, srednia_pensja, max_pensja)
+VALUES ((SELECT department_id FROM departments WHERE ROWNUM=1), 'Test', 10, 9999.99, 99999.99)
+
+
+Error starting at line : 1 in command -
+INSERT INTO v_dept_stats_4p (department_id, department_name, liczba_pracownikow, srednia_pensja, max_pensja)
+VALUES ((SELECT department_id FROM departments WHERE ROWNUM=1), 'Test', 10, 9999.99, 99999.99)
+Error at Command Line : 1 Column : 30
+Error report -
+SQL Error: ORA-01779: cannot modify a column which maps to a non key-preserved table
+
+https://docs.oracle.com/error-help/db/ora-01779/01779. 00000 -  "cannot modify a column which maps to a non key-preserved table"
+*Cause:    An attempt was made to insert or update columns of a join view which
+           map to a non-key-preserved table.
+*Action:   Modify the underlying base tables directly.
+
+More Details :
+https://docs.oracle.com/error-help/db/ora-01779/
+
+--Dodać danych się nie da (to widok zagregowany).
+
+--zad 8
+CREATE OR REPLACE VIEW v_employees_salary_chk AS
+SELECT employee_id, last_name, first_name, salary, job_id, email, hire_date, department_id
+FROM   employees
+WHERE  salary BETWEEN 5000 AND 12000
+WITH CHECK OPTION CONSTRAINT v_emp_sal_chk;
+
+--a
+--i
+INSERT INTO v_employees_salary_chk
+  (employee_id, last_name, first_name, salary, job_id, email, hire_date, department_id)
+VALUES
+  (10002, 'Zakres', 'OK', 7500,
+   (SELECT job_id FROM jobs WHERE ROWNUM=1),
+   'ok.zakres@ex.com', SYSDATE,
+   (SELECT department_id FROM departments WHERE ROWNUM=1));
+
+--ii
+INSERT INTO v_employees_salary_chk
+  (employee_id, last_name, first_name, salary, job_id, email, hire_date, department_id)
+VALUES
+  (10003, 'Poza', 'Zakresem', 13000,
+   (SELECT job_id FROM jobs WHERE ROWNUM=1),
+   'poza@ex.com', SYSDATE,
+   (SELECT department_id FROM departments WHERE ROWNUM=1));
+
+
+Error starting at line : 1 in command -
+INSERT INTO v_employees_salary_chk
+  (employee_id, last_name, first_name, salary, job_id, email, hire_date, department_id)
+VALUES
+  (10003, 'Poza', 'Zakresem', 13000,
+   (SELECT job_id FROM jobs WHERE ROWNUM=1),
+   'poza@ex.com', SYSDATE,
+   (SELECT department_id FROM departments WHERE ROWNUM=1))
+Error at Command Line : 1 Column : 13
+Error report -
+SQL Error: ORA-01402: view WITH CHECK OPTION where-clause violation
+
+https://docs.oracle.com/error-help/db/ora-01402/01402. 00000 -  "view WITH CHECK OPTION where-clause violation"
+*Cause:    An INSERT or UPDATE statement was attempted on a view
+           created with the CHECK OPTION. This would have resulted in the
+           creation of a row that would not satisfy the view's WHERE
+           clause.
+*Action:   Examine the view's WHERE clause in the dictionary
+           table VIEWS. If the current view does not have the CHECK
+           OPTION, then its FROM clause must reference a second view that
+           is defined using the CHECK OPTION. The second view's WHERE
+           clause must also be satisfied by any INSERT or UPDATE
+           statements. To insert the row, it may be necessary to insert
+           it directly into the underlying table, rather than through the
+           view.
+
+More Details :
+https://docs.oracle.com/error-help/db/ora-01402/
+
+--zad 9
+CREATE MATERIALIZED VIEW v_managerowie
+BUILD IMMEDIATE
+REFRESH COMPLETE ON DEMAND
+AS
+SELECT m.employee_id,
+       m.first_name,
+       m.last_name,
+       d.department_id,
+       d.department_name
+FROM   departments d
+JOIN   employees   m ON m.employee_id = d.manager_id;
+
+--zad 10
+CREATE OR REPLACE VIEW v_najlepiej_oplacani AS
+SELECT employee_id, first_name, last_name, salary
+FROM   employees
+ORDER  BY salary DESC
+FETCH FIRST 10 ROWS ONLY;
