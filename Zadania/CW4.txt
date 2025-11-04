@@ -1,0 +1,151 @@
+--zad 1
+SELECT e.employee_id,
+       e.last_name,
+       e.salary,
+       RANK() OVER (ORDER BY e.salary DESC) AS rnk_salary
+FROM   employees e;
+
+--zad 2
+SELECT e.*,
+       SUM(e.salary) OVER () AS total_salary_all
+FROM   employees e;
+
+--zad 3
+WITH lines AS (
+  SELECT s.sale_id, s.employee_id, s.product_id, s.sale_date,
+         (s.price * s.quantity) AS order_value
+  FROM   sales s
+)
+SELECT e.last_name,
+       p.product_name,
+       SUM(l.order_value) OVER (
+           PARTITION BY l.employee_id
+           ORDER BY l.sale_date, l.sale_id
+           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+       ) AS cum_emp_sales,
+       RANK() OVER (ORDER BY l.order_value DESC) AS order_value_rank_global
+FROM   lines l
+JOIN   employees e ON e.employee_id = l.employee_id
+JOIN   products  p ON p.product_id  = l.product_id;
+
+--zad 4
+SELECT e.last_name,
+       p.product_name,
+       s.price                                AS price_used,
+       COUNT(*) OVER (
+         PARTITION BY p.product_id, TRUNC(s.sale_date)
+       )                                       AS tx_count_prod_day,
+       SUM(s.price * s.quantity) OVER (
+         PARTITION BY p.product_id, TRUNC(s.sale_date)
+       )                                       AS day_sum_prod,
+       LAG (s.price) OVER (
+         PARTITION BY p.product_id ORDER BY s.sale_date, s.sale_id
+       )                                       AS prev_price,
+       LEAD(s.price) OVER (
+         PARTITION BY p.product_id ORDER BY s.sale_date, s.sale_id
+       )                                       AS next_price
+FROM   sales s
+JOIN   employees e ON e.employee_id = s.employee_id
+JOIN   products  p ON p.product_id  = s.product_id;
+
+--zad 5
+SELECT p.product_name,
+       s.price                                 AS price_used,
+       TRUNC(s.sale_date, 'MM')                AS month_start,
+       SUM(s.price * s.quantity) OVER (
+         PARTITION BY TRUNC(s.sale_date,'MM')
+       )                                       AS month_total_all
+       SUM(s.price * s.quantity) OVER (
+         PARTITION BY p.product_id, TRUNC(s.sale_date,'MM')
+         ORDER BY s.sale_date, s.sale_id
+         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+       )                                       AS month_cum_product
+FROM   sales s
+JOIN   products p ON p.product_id = s.product_id;
+
+--zad 6
+WITH daily AS (
+  SELECT p.product_id, p.product_name, p.product_category,
+         EXTRACT(MONTH FROM s.sale_date) AS mth,
+         EXTRACT(DAY   FROM s.sale_date) AS dom,
+         EXTRACT(YEAR  FROM s.sale_date) AS yr,
+         AVG(s.price) AS avg_price
+  FROM   sales s
+  JOIN   products p ON p.product_id = s.product_id
+  GROUP  BY p.product_id, p.product_name, p.product_category,
+           EXTRACT(YEAR  FROM s.sale_date),
+           EXTRACT(MONTH FROM s.sale_date),
+           EXTRACT(DAY   FROM s.sale_date)
+)
+SELECT d22.product_name,
+       d22.product_category,
+       d22.mth, d22.dom,
+       d22.avg_price AS price_2022,
+       d23.avg_price AS price_2023,
+       (d23.avg_price - d22.avg_price) AS diff_23_22
+FROM   daily d22
+JOIN   daily d23
+  ON   d23.product_id = d22.product_id
+ AND   d23.mth        = d22.mth
+ AND   d23.dom        = d22.dom
+WHERE  d22.yr = 2022
+  AND  d23.yr = 2023;
+
+--zad 7
+SELECT p.product_category,
+       p.product_name,
+       s.price AS price_used,
+       MIN(s.price) OVER (PARTITION BY p.product_category) AS min_in_cat,
+       MAX(s.price) OVER (PARTITION BY p.product_category) AS max_in_cat,
+       MAX(s.price) OVER (PARTITION BY p.product_category)
+     - MIN(s.price) OVER (PARTITION BY p.product_category) AS range_in_cat
+FROM   sales s
+JOIN   products p ON p.product_id = s.product_id;
+
+--zad 8
+SELECT p.product_name,
+       s.sale_date,
+       s.price AS price_used,
+       ROUND(AVG(s.price) OVER (
+         PARTITION BY p.product_id
+         ORDER BY s.sale_date, s.sale_id
+         ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+       ), 2) AS moving_avg_3
+FROM   sales s
+JOIN   products p ON p.product_id = s.product_id;
+
+--zad 9
+SELECT p.product_category,
+       p.product_name,
+       s.price AS price_used,
+       RANK()       OVER (PARTITION BY p.product_category ORDER BY s.price DESC) AS rnk_in_cat,
+       ROW_NUMBER() OVER (PARTITION BY p.product_category ORDER BY s.price DESC) AS rownum_in_cat,
+       DENSE_RANK() OVER (PARTITION BY p.product_category ORDER BY s.price DESC) AS dense_in_cat
+FROM   sales s
+JOIN   products p ON p.product_id = s.product_id;
+
+--zad 10
+WITH lines AS (
+  SELECT s.sale_id, s.employee_id, s.product_id, s.sale_date,
+         (s.price * s.quantity) AS order_value
+  FROM   sales s
+)
+SELECT e.last_name,
+       p.product_name,
+       l.sale_date,
+       l.order_value,
+       SUM(l.order_value) OVER (
+         PARTITION BY l.employee_id
+         ORDER BY l.sale_date, l.sale_id
+         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+       ) AS emp_cum_sales,
+       RANK() OVER (ORDER BY l.order_value DESC) AS order_value_rank_global
+FROM   lines l
+JOIN   employees e ON e.employee_id = l.employee_id
+JOIN   products  p ON p.product_id  = l.product_id;
+
+--zad 11
+SELECT DISTINCT e.first_name, e.last_name, j.job_title
+FROM   employees e
+JOIN   sales     s ON s.employee_id = e.employee_id
+JOIN   jobs      j ON j.job_id      = e.job_id;
