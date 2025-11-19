@@ -1,0 +1,229 @@
+SET SERVEROUTPUT ON;
+DECLARE
+  v_numer_max      departments.department_id%TYPE;
+  v_new_dept_name  departments.department_name%TYPE := 'EDUCATION';
+  v_new_dept_id    departments.department_id%TYPE;
+BEGIN
+  SELECT MAX(department_id)
+  INTO   v_numer_max
+  FROM   departments;
+
+  DBMS_OUTPUT.PUT_LINE('Maksymalny numer departamentu: ' || v_numer_max);
+
+  v_new_dept_id := v_numer_max + 10;
+
+  INSERT INTO departments (department_id, department_name, manager_id, location_id)
+  VALUES (v_new_dept_id, v_new_dept_name, NULL, NULL);
+
+  DBMS_OUTPUT.PUT_LINE('Dodano departament o ID = ' || v_new_dept_id ||
+                       ', nazwa = ' || v_new_dept_name);
+
+  -- Zadanie 2: zmiana location_id na 3000 dla nowego departamentu
+  UPDATE departments
+  SET    location_id = 3000
+  WHERE  department_id = v_new_dept_id;
+
+  DBMS_OUTPUT.PUT_LINE('Zmieniono LOCATION_ID na 3000 dla departamentu ' || v_new_dept_id);
+
+  COMMIT;
+END;
+/
+
+
+CREATE TABLE nowa (
+  wartosc VARCHAR2(10)
+);
+-- Możesz wyczyścić tabelę przed testem:
+-- TRUNCATE TABLE nowa;
+
+DECLARE
+  i PLS_INTEGER;
+BEGIN
+  FOR i IN 1..10 LOOP
+    IF i IN (4, 6) THEN
+      CONTINUE;
+    END IF;
+
+    INSERT INTO nowa (wartosc)
+    VALUES (TO_CHAR(i));
+
+    DBMS_OUTPUT.PUT_LINE('Wstawiono: ' || i);
+  END LOOP;
+
+  COMMIT;
+END;
+/
+
+DECLARE
+  v_country  countries%ROWTYPE;
+BEGIN
+  SELECT *
+  INTO   v_country
+  FROM   countries
+  WHERE  country_id = 'CA';
+
+  DBMS_OUTPUT.PUT_LINE('Kraj: ' || v_country.country_name ||
+                       ', REGION_ID = ' || v_country.region_id);
+END;
+/
+
+
+DECLARE
+  v_job   jobs%ROWTYPE;
+  v_count PLS_INTEGER := 0;
+BEGIN
+  FOR v_job IN (
+    SELECT *
+    FROM   jobs
+    WHERE  LOWER(job_title) LIKE '%manager%'
+  ) LOOP
+    UPDATE jobs
+    SET    min_salary = v_job.min_salary * 1.05
+    WHERE  job_id = v_job.job_id;
+
+    v_count := v_count + SQL%ROWCOUNT;
+  END LOOP;
+
+  DBMS_OUTPUT.PUT_LINE('Zaktualizowano wierszy: ' || v_count);
+
+  -- Cofnięcie zmian zgodnie z poleceniem
+  ROLLBACK;
+  DBMS_OUTPUT.PUT_LINE('Zmiany zostały cofnięte (ROLLBACK).');
+END;
+/
+
+
+DECLARE
+  v_job jobs%ROWTYPE;
+BEGIN
+  SELECT *
+  INTO   v_job
+  FROM   jobs
+  WHERE  max_salary = (
+           SELECT MAX(max_salary) FROM jobs
+         )
+    AND  ROWNUM = 1;
+
+  DBMS_OUTPUT.PUT_LINE('Stanowisko o najwyższej MAX_SALARY:');
+  DBMS_OUTPUT.PUT_LINE('JOB_ID: ' || v_job.job_id ||
+                       ', JOB_TITLE: ' || v_job.job_title ||
+                       ', MIN_SALARY: ' || v_job.min_salary ||
+                       ', MAX_SALARY: ' || v_job.max_salary);
+END;
+/
+
+
+DECLARE
+  CURSOR c_kraje (p_region_id regions.region_id%TYPE) IS
+    SELECT c.country_name,
+           ( SELECT COUNT(*)
+             FROM   employees e
+             JOIN   departments d ON d.department_id = e.department_id
+             JOIN   locations   l ON l.location_id   = d.location_id
+             WHERE  l.country_id = c.country_id ) AS liczba_pracownikow
+    FROM   countries c
+    WHERE  c.region_id = p_region_id;
+
+  v_kraj_name  countries.country_name%TYPE;
+  v_count_emp  PLS_INTEGER;
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Kraje w regionie 1 (Europe) i liczba pracowników:');
+
+  OPEN c_kraje(1);
+  LOOP
+    FETCH c_kraje INTO v_kraj_name, v_count_emp;
+    EXIT WHEN c_kraje%NOTFOUND;
+
+    DBMS_OUTPUT.PUT_LINE('- ' || v_kraj_name ||
+                         ' : liczba pracowników = ' || v_count_emp);
+  END LOOP;
+  CLOSE c_kraje;
+END;
+/
+
+
+DECLARE
+  CURSOR c_dep50 IS
+    SELECT last_name, salary
+    FROM   employees
+    WHERE  department_id = 50;
+
+BEGIN
+  FOR rec IN c_dep50 LOOP
+    IF rec.salary > 3100 THEN
+      DBMS_OUTPUT.PUT_LINE(rec.last_name || ' - nie dawać podwyżki (salary=' || rec.salary || ')');
+    ELSE
+      DBMS_OUTPUT.PUT_LINE(rec.last_name || ' - dać podwyżkę (salary=' || rec.salary || ')');
+    END IF;
+  END LOOP;
+END;
+/
+
+
+DECLARE
+  CURSOR c_pracownicy (
+    p_min_sal   employees.salary%TYPE,
+    p_max_sal   employees.salary%TYPE,
+    p_name_frag VARCHAR2
+  ) IS
+    SELECT first_name, last_name, salary
+    FROM   employees
+    WHERE  salary BETWEEN p_min_sal AND p_max_sal
+       AND LOWER(first_name) LIKE '%' || LOWER(p_name_frag) || '%';
+
+  v_first_name employees.first_name%TYPE;
+  v_last_name  employees.last_name%TYPE;
+  v_salary     employees.salary%TYPE;
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('--- Pracownicy 1000-5000 z literą ''a'' w imieniu ---');
+  OPEN c_pracownicy(1000, 5000, 'a');
+  LOOP
+    FETCH c_pracownicy INTO v_first_name, v_last_name, v_salary;
+    EXIT WHEN c_pracownicy%NOTFOUND;
+
+    DBMS_OUTPUT.PUT_LINE(v_first_name || ' ' || v_last_name ||
+                         ' (salary=' || v_salary || ')');
+  END LOOP;
+  CLOSE c_pracownicy;
+
+  DBMS_OUTPUT.PUT_LINE('--- Pracownicy 5000-20000 z literą ''u'' w imieniu ---');
+  OPEN c_pracownicy(5000, 20000, 'u');
+  LOOP
+    FETCH c_pracownicy INTO v_first_name, v_last_name, v_salary;
+    EXIT WHEN c_pracownicy%NOTFOUND;
+
+    DBMS_OUTPUT.PUT_LINE(v_first_name || ' ' || v_last_name ||
+                         ' (salary=' || v_salary || ')');
+  END LOOP;
+  CLOSE c_pracownicy;
+END;
+/
+
+
+CREATE TABLE statystyki_menedzerow (
+  manager_id         NUMBER,
+  liczba_podwladnych NUMBER,
+  roznica_pensji     NUMBER
+);
+
+DECLARE
+BEGIN
+  DELETE FROM statystyki_menedzerow;
+
+  FOR rec IN (
+    SELECT manager_id,
+           COUNT(*)                   AS liczba_podwladnych,
+           MAX(salary) - MIN(salary)  AS roznica_pensji
+    FROM   employees
+    WHERE  manager_id IS NOT NULL
+    GROUP  BY manager_id
+  ) LOOP
+    INSERT INTO statystyki_menedzerow (manager_id, liczba_podwladnych, roznica_pensji)
+    VALUES (rec.manager_id, rec.liczba_podwladnych, rec.roznica_pensji);
+  END LOOP;
+
+  COMMIT;
+
+  DBMS_OUTPUT.PUT_LINE('Wypełniono tabelę STATYSTYKI_MENEDZEROW.');
+END;
+/
