@@ -1,0 +1,176 @@
+SET SERVEROUTPUT ON;
+
+CREATE OR REPLACE TRIGGER trg_emp_default_email
+BEFORE INSERT ON employees
+FOR EACH ROW
+BEGIN
+  IF :NEW.email IS NULL OR :NEW.email = '' THEN
+    :NEW.email := LOWER(:NEW.first_name || '.' || :NEW.last_name || '@firma.com');
+  END IF;
+END;
+/
+-- TEST:
+-- INSERT INTO employees(employee_id, first_name, last_name, hire_date, job_id, salary, department_id)
+-- VALUES (3000, 'JAN', 'NOWAK', SYSDATE, 1, 5000, 10);
+
+
+CREATE OR REPLACE TRIGGER trg_check_salary
+BEFORE UPDATE OF salary ON employees
+FOR EACH ROW
+DECLARE
+  v_max jobs.max_salary%TYPE;
+BEGIN
+  SELECT max_salary INTO v_max
+  FROM   jobs
+  WHERE  job_id = :NEW.job_id;
+
+  IF :NEW.salary > v_max THEN
+    RAISE_APPLICATION_ERROR(-20010, 'Pensja przekracza maksymalną pensję dla stanowiska!');
+  END IF;
+END;
+/
+-- TEST:
+-- UPDATE employees SET salary = 999999 WHERE employee_id = 100;
+
+
+CREATE TABLE emp_archive (
+  emp_id      NUMBER,
+  first_name  VARCHAR2(100),
+  last_name   VARCHAR2(100),
+  salary      NUMBER,
+  deleted_at  DATE
+);
+
+CREATE OR REPLACE TRIGGER trg_emp_delete_archive
+AFTER DELETE ON employees
+FOR EACH ROW
+BEGIN
+  INSERT INTO emp_archive(emp_id, first_name, last_name, salary, deleted_at)
+  VALUES (:OLD.employee_id, :OLD.first_name, :OLD.last_name, :OLD.salary, SYSDATE);
+END;
+/
+-- TEST:
+-- DELETE FROM employees WHERE employee_id = 3000;
+-- SELECT * FROM emp_archive;
+
+
+CREATE OR REPLACE TRIGGER trg_products_price_limit
+BEFORE INSERT OR UPDATE OF price ON sales
+FOR EACH ROW
+BEGIN
+  IF :NEW.price < 1 THEN
+    RAISE_APPLICATION_ERROR(-20011, 'Cena musi być >= 1');
+  ELSIF :NEW.price > 1000000 THEN
+    RAISE_APPLICATION_ERROR(-20012, 'Cena nie może przekraczać 1 000 000');
+  END IF;
+END;
+/
+-- TEST:
+-- UPDATE products SET price = 0 WHERE product_id = 1; -- błąd
+
+
+-- Tabela logów (uruchom raz)
+CREATE TABLE sales_log (
+  log_id      NUMBER GENERATED ALWAYS AS IDENTITY,
+  sale_id     NUMBER,
+  emp_id      NUMBER,
+  product_id  NUMBER,
+  log_date    DATE
+);
+
+CREATE OR REPLACE TRIGGER trg_sales_log
+AFTER INSERT ON sales
+FOR EACH ROW
+BEGIN
+  INSERT INTO sales_log(sale_id, emp_id, product_id, log_date)
+  VALUES (:NEW.sale_id, :NEW.employee_id, :NEW.product_id, SYSDATE);
+END;
+/
+-- TEST:
+-- INSERT INTO sales (sale_id, employee_id, product_id, sale_date, quantity, price)
+-- VALUES (9999, 100, 1, SYSDATE, 2, 300);
+-- SELECT * FROM sales_log;
+
+
+CREATE OR REPLACE TRIGGER trg_no_self_manager
+BEFORE UPDATE OF manager_id ON employees
+FOR EACH ROW
+BEGIN
+  IF :NEW.manager_id = :NEW.employee_id THEN
+    RAISE_APPLICATION_ERROR(-20013, 'Pracownik nie może być sam sobie managerem!');
+  END IF;
+END;
+/
+-- TEST:
+-- UPDATE employees SET manager_id = employee_id WHERE employee_id = 100;
+
+
+CREATE TABLE salary_history (
+  hist_id     NUMBER GENERATED ALWAYS AS IDENTITY,
+  emp_id      NUMBER,
+  old_salary  NUMBER,
+  new_salary  NUMBER,
+  changed_at  DATE
+);
+
+CREATE OR REPLACE TRIGGER trg_salary_history
+AFTER UPDATE OF salary ON employees
+FOR EACH ROW
+BEGIN
+  INSERT INTO salary_history(emp_id, old_salary, new_salary, changed_at)
+  VALUES (:OLD.employee_id, :OLD.salary, :NEW.salary, SYSDATE);
+END;
+/
+-- TEST:
+-- UPDATE employees SET salary = salary + 100 WHERE employee_id = 101;
+-- SELECT * FROM salary_history;
+
+
+CREATE OR REPLACE TRIGGER trg_set_location_it
+BEFORE INSERT ON departments
+FOR EACH ROW
+BEGIN
+  IF UPPER(:NEW.department_name) = 'IT' THEN
+    :NEW.location_id := 1700;
+  END IF;
+END;
+/
+-- TEST:
+-- INSERT INTO departments(department_id, department_name) VALUES (999, 'IT');
+
+
+CREATE OR REPLACE TRIGGER trg_min_salary
+BEFORE INSERT OR UPDATE OF salary ON employees
+FOR EACH ROW
+BEGIN
+  IF :NEW.salary < 1000 THEN
+    :NEW.salary := 1000;
+  END IF;
+END;
+/
+-- TEST:
+-- INSERT INTO employees(employee_id, first_name, last_name, salary, job_id, hire_date, department_id)
+-- VALUES (4000, 'Test', 'LowSalary', 10, 1, SYSDATE, 10);
+
+
+CREATE OR REPLACE TRIGGER trg_sales_counter
+FOR INSERT ON sales
+COMPOUND TRIGGER
+
+  v_count NUMBER := 0;
+
+BEFORE EACH ROW IS
+BEGIN
+  v_count := v_count + 1;
+END BEFORE EACH ROW;
+
+AFTER STATEMENT IS
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Dodano wpisów do SALES: ' || v_count);
+END AFTER STATEMENT;
+
+END trg_sales_counter;
+/
+-- TEST:
+-- INSERT INTO sales VALUES (10001, 100, 1, SYSDATE, 1, 300);
+-- INSERT ALL ... (wiele wierszy)

@@ -1,0 +1,195 @@
+SET SERVEROUTPUT ON;
+
+
+CREATE OR REPLACE FUNCTION full_name (
+  p_emp_id IN employees.employee_id%TYPE
+) RETURN VARCHAR2 AS
+  v_first employees.first_name%TYPE;
+  v_last  employees.last_name%TYPE;
+BEGIN
+  SELECT first_name, last_name
+  INTO   v_first, v_last
+  FROM   employees
+  WHERE  employee_id = p_emp_id;
+
+  RETURN v_last || ', ' || v_first;
+
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    RETURN 'BRAK PRACOWNIKA';
+END;
+/
+-- TEST:
+-- SELECT full_name(100) FROM dual;
+
+
+CREATE OR REPLACE FUNCTION employee_commission (
+  p_emp_id IN employees.employee_id%TYPE
+) RETURN NUMBER AS
+  v_sal  employees.salary%TYPE;
+  v_comm employees.commission_pct%TYPE;
+BEGIN
+  SELECT salary, commission_pct
+  INTO   v_sal, v_comm
+  FROM   employees
+  WHERE  employee_id = p_emp_id;
+
+  RETURN v_sal * NVL(v_comm, 0);
+
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    RETURN 0;
+END;
+/
+-- TEST:
+-- SELECT employee_commission(145) FROM dual;
+
+
+CREATE OR REPLACE FUNCTION work_age (
+  p_emp_id IN employees.employee_id%TYPE
+) RETURN NUMBER AS
+  v_age NUMBER;
+BEGIN
+  SELECT FLOOR(MONTHS_BETWEEN(SYSDATE, hire_date) / 12)
+  INTO   v_age
+  FROM   employees
+  WHERE  employee_id = p_emp_id;
+
+  RETURN v_age;
+
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    RETURN NULL;
+END;
+/
+-- TEST:
+-- SELECT work_age(100) FROM dual;
+
+
+CREATE OR REPLACE FUNCTION pesel_from_hire (
+  p_emp_id IN employees.employee_id%TYPE
+) RETURN VARCHAR2 AS
+  v_date DATE;
+BEGIN
+  SELECT hire_date INTO v_date
+  FROM   employees
+  WHERE  employee_id = p_emp_id;
+
+  RETURN TO_CHAR(v_date, 'RRMMDD') || '00000';
+
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    RETURN NULL;
+END;
+/
+-- TEST:
+-- SELECT pesel_from_hire(100) FROM dual;
+
+
+CREATE OR REPLACE FUNCTION capitalize_word (
+  p_text IN VARCHAR2
+) RETURN VARCHAR2 AS
+BEGIN
+  IF p_text IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  RETURN UPPER(SUBSTR(p_text,1,1)) || LOWER(SUBSTR(p_text,2));
+
+END;
+/
+-- TEST:
+-- SELECT capitalize_word('pRAWny') FROM dual;
+
+
+CREATE OR REPLACE FUNCTION validate_pesel (
+  p_pesel IN VARCHAR2
+) RETURN VARCHAR2 AS
+BEGIN
+  IF LENGTH(p_pesel) != 11 THEN
+    RETURN 'NIEPOPRAWNY: zła długość';
+  END IF;
+
+  IF REGEXP_LIKE(p_pesel, '^[0-9]{11}$') THEN
+    RETURN 'OK';
+  ELSE
+    RETURN 'NIEPOPRAWNY: zawiera nie-cyfry';
+  END IF;
+END;
+/
+-- TEST:
+-- SELECT validate_pesel('12345678901') FROM dual;
+-- SELECT validate_pesel('123ABC78901') FROM dual;
+
+
+CREATE OR REPLACE FUNCTION emp_info (
+  p_emp_id IN employees.employee_id%TYPE
+) RETURN VARCHAR2 AS
+  v_first employees.first_name%TYPE;
+  v_last  employees.last_name%TYPE;
+  v_sal   employees.salary%TYPE;
+BEGIN
+  SELECT first_name, last_name, salary
+  INTO   v_first, v_last, v_sal
+  FROM   employees
+  WHERE  employee_id = p_emp_id;
+
+  RETURN 'ID: ' || p_emp_id ||
+         ' | ' || v_first || ' ' || v_last ||
+         ' | PENSJA: ' || v_sal;
+
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    RETURN 'PRACOWNIK NIE ISTNIEJE';
+END;
+/
+-- TEST:
+-- SELECT emp_info(101) FROM dual;
+
+
+CREATE OR REPLACE FUNCTION count_dept_employees (
+  p_dept_id IN employees.department_id%TYPE
+) RETURN NUMBER AS
+  v_cnt NUMBER;
+BEGIN
+  SELECT COUNT(*)
+  INTO   v_cnt
+  FROM   employees
+  WHERE  department_id = p_dept_id;
+
+  RETURN v_cnt;
+
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN NULL;
+END;
+/
+-- TEST:
+-- SELECT count_dept_employees(50) FROM dual;
+
+
+CREATE OR REPLACE FUNCTION raise_salary_calc (
+  p_salary IN NUMBER,
+  p_pct    IN NUMBER
+) RETURN NUMBER AS
+BEGIN
+  RETURN p_salary + (p_salary * p_pct / 100);
+END;
+/
+-- TEST:
+-- SELECT raise_salary_calc(10000, 10) FROM dual;
+
+
+CREATE OR REPLACE FUNCTION avg_company_salary
+RETURN NUMBER AS
+  v_avg NUMBER;
+BEGIN
+  SELECT AVG(salary)
+  INTO   v_avg
+  FROM   employees;
+
+  RETURN v_avg;
+END;
+/
+-- TEST:
+-- SELECT avg_company_salary FROM dual;
