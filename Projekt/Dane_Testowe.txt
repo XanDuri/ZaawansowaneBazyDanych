@@ -1,0 +1,201 @@
+Dane_Testowe
+
+1) Przygotowanie danych testowych (bezpiecznie)
+
+DECLARE
+  v_cnt NUMBER;
+BEGIN
+  -- MOVIE (id=1)
+  SELECT COUNT(*) INTO v_cnt FROM project_movies WHERE movie_id = 1;
+  IF v_cnt = 0 THEN
+    INSERT INTO project_movies VALUES
+      (1,'Matrix',1999,'16+',130,'tt0133093','Sci-fi classic');
+    DBMS_OUTPUT.PUT_LINE('Dodano film Matrix (movie_id=1).');
+  ELSE
+    DBMS_OUTPUT.PUT_LINE('Film Matrix już istnieje (movie_id=1).');
+  END IF;
+
+  -- GENRE (id=1)
+  SELECT COUNT(*) INTO v_cnt FROM project_genres WHERE genre_id = 1;
+  IF v_cnt = 0 THEN
+    INSERT INTO project_genres VALUES (1,'Sci-Fi');
+    DBMS_OUTPUT.PUT_LINE('Dodano gatunek Sci-Fi (genre_id=1).');
+  ELSE
+    DBMS_OUTPUT.PUT_LINE('Gatunek Sci-Fi już istnieje (genre_id=1).');
+  END IF;
+
+  -- MOVIE_GENRES (1,1)
+  SELECT COUNT(*) INTO v_cnt FROM project_movie_genres
+  WHERE movie_id = 1 AND genre_id = 1;
+  IF v_cnt = 0 THEN
+    INSERT INTO project_movie_genres VALUES (1,1);
+    DBMS_OUTPUT.PUT_LINE('Powiązano film z gatunkiem (movie_id=1, genre_id=1).');
+  ELSE
+    DBMS_OUTPUT.PUT_LINE('Powiązanie film-gatunek już istnieje.');
+  END IF;
+
+  -- INVENTORY (id=1)
+  SELECT COUNT(*) INTO v_cnt FROM project_inventory WHERE inventory_id = 1;
+  IF v_cnt = 0 THEN
+    INSERT INTO project_inventory VALUES (1,1,1,'BC001','AVAILABLE');
+    DBMS_OUTPUT.PUT_LINE('Dodano egzemplarz (inventory_id=1) w oddziale 1.');
+  ELSE
+    DBMS_OUTPUT.PUT_LINE('Egzemplarz inventory_id=1 już istnieje.');
+  END IF;
+
+  COMMIT;
+END;
+/
+
+
+2) Test pakietu: dodanie klienta + logowanie
+
+
+BEGIN
+  project_rental_pkg.add_customer(
+    p_customer_id   => 100,
+    p_first_name    => 'Jan',
+    p_last_name     => 'Testowy',
+    p_email         => 'jan.testowy@example.com',
+    p_phone         => '+48 700 800 900',
+    p_date_of_birth => DATE'1990-01-01'
+  );
+  DBMS_OUTPUT.PUT_LINE('OK: Dodano klienta 100 przez pakiet.');
+EXCEPTION
+  WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('BŁĄD add_customer: '||SQLERRM);
+END;
+/
+
+
+
+SELECT rental_id, status, rental_date, due_date
+FROM project_rentals
+WHERE rental_id=500;
+
+SELECT inventory_id, status
+FROM project_inventory
+WHERE inventory_id=1;
+
+
+4) Test wyjątku: próba wypożyczenia tego samego RENTED (powinien polecieć -20002)
+
+
+BEGIN
+  project_rental_pkg.rent_movie(
+    p_rental_id    => 501,
+    p_inventory_id => 1,
+    p_customer_id  => 100,
+    p_employee_id  => 1,
+    p_branch_id    => 1,
+    p_days         => 1,
+    p_base_fee     => 12
+  );
+  DBMS_OUTPUT.PUT_LINE('UWAGA: To nie powinno przejść (egzemplarz powinien być RENTED).');
+EXCEPTION
+  WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('OK: Oczekiwany błąd rent_movie: '||SQLERRM);
+END;
+/
+
+5) Test zwrotu + naliczenie kary (symulacja spóźnienia)
+
+BEGIN
+  UPDATE project_rentals
+  SET due_date = TRUNC(SYSDATE) - 3
+  WHERE rental_id = 500;
+
+  project_rental_pkg.return_movie(
+    p_rental_id      => 500,
+    p_employee_id    => 1,
+    p_daily_late_fee => 2
+  );
+
+  DBMS_OUTPUT.PUT_LINE('OK: Zwrot wypożyczenia 500 (powinna być kara).');
+EXCEPTION
+  WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('BŁĄD return_movie: '||SQLERRM);
+END;
+/
+
+SELECT rental_id, status, return_date, late_fee
+FROM project_rentals
+WHERE rental_id=500;
+
+SELECT inventory_id, status
+FROM project_inventory
+WHERE inventory_id=1;
+
+
+6) Płatność + statystyki okienkowe (generate_monthly_stats)
+
+DECLARE
+  v_cnt NUMBER;
+BEGIN
+  SELECT COUNT(*) INTO v_cnt FROM project_payments WHERE payment_id = 1;
+  IF v_cnt = 0 THEN
+    INSERT INTO project_payments(payment_id, rental_id, payment_date, amount, method)
+    VALUES (1, 500, SYSDATE, 27.00, 'CARD');
+    DBMS_OUTPUT.PUT_LINE('Dodano płatność payment_id=1.');
+  ELSE
+    DBMS_OUTPUT.PUT_LINE('Płatność payment_id=1 już istnieje.');
+  END IF;
+  COMMIT;
+END;
+/
+
+
+BEGIN
+  project_stats_pkg.generate_monthly_stats;
+  DBMS_OUTPUT.PUT_LINE('OK: Przeliczono project_monthly_stats.');
+END;
+/
+
+
+SELECT *
+FROM project_monthly_stats
+ORDER BY year_num DESC, month_num DESC, branch_id;
+
+
+7) Ranking filmów w miesiącu (top_movies_for_month)
+
+
+VAR rc REFCURSOR;
+
+BEGIN
+  :rc := project_stats_pkg.top_movies_for_month(
+    EXTRACT(YEAR FROM SYSDATE),
+    EXTRACT(MONTH FROM SYSDATE)
+  );
+END;
+/
+
+PRINT rc;
+
+
+8) Test archiwizacji klienta (trigger BEFORE DELETE)
+
+
+BEGIN
+  project_rental_pkg.delete_customer(100);
+  DBMS_OUTPUT.PUT_LINE('OK: Usunięto klienta 100 przez pakiet (powinien trafić do archive).');
+EXCEPTION
+  WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('BŁĄD delete_customer: '||SQLERRM);
+END;
+/
+
+SELECT customer_id, first_name, last_name, archived_at
+FROM project_customers_archive
+WHERE customer_id = 100
+ORDER BY archived_at DESC;
+
+
+9) Test logów (pakiet + trigger logujący rentals)
+
+
+SELECT log_id, log_date, user_name, operation, object_name, key_value, message, error_code
+FROM project_action_log
+ORDER BY log_id DESC
+FETCH FIRST 30 ROWS ONLY;
+
